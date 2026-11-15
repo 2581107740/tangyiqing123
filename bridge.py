@@ -100,16 +100,28 @@ def query_doro(prompt: str) -> str:
     root = os.environ.get("DORO_BASE_URL", API_ROOT).rstrip("/")
     if not root.startswith("https://"):
         raise ValueError("DORO_BASE_URL must be HTTPS")
-    endpoint = root + "/responses"
-    body = json.dumps({
-        "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
-        "instructions": "Answer the user's request accurately and concisely.",
-        "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
-        "stream": False,
-        "store": False,
-        "reasoning": {"effort": "low"},
-        "max_output_tokens": 1024,
-    }, ensure_ascii=False).encode("utf-8")
+    api_mode = os.environ.get("DORO_API_MODE", "responses").strip().lower()
+    if api_mode == "chat_completions":
+        endpoint = root + "/chat/completions"
+        payload = {
+            "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }
+    elif api_mode == "responses":
+        endpoint = root + "/responses"
+        payload = {
+            "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
+            "instructions": "Answer the user's request accurately and concisely.",
+            "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
+            "stream": False,
+            "store": False,
+            "reasoning": {"effort": "low"},
+            "max_output_tokens": 1024,
+        }
+    else:
+        raise ValueError("DORO_API_MODE must be responses or chat_completions")
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = request.Request(endpoint, data=body, method="POST", headers={
         "Authorization": "Bearer " + key,
         "Content-Type": "application/json",
@@ -137,6 +149,19 @@ def query_doro(prompt: str) -> str:
         if "text/event-stream" in (response.headers.get("Content-Type") or "").lower() or raw.lstrip().startswith(b"event:"):
             return extract_stream(raw)[:40000]
         payload = json.loads(raw)
+        if api_mode == "chat_completions":
+            choices = payload.get("choices") if isinstance(payload, dict) else None
+            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                raise ValueError("Chat Completions response has no choices")
+            msg = choices[0].get("message")
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if isinstance(content, str) and content.strip():
+                return content[:40000]
+            if isinstance(content, list):
+                parts = [v.get("text") for v in content if isinstance(v, dict) and isinstance(v.get("text"), str)]
+                if parts:
+                    return "".join(parts)[:40000]
+            raise ValueError("Chat Completions response has no text content")
         return extract_text(payload)[:40000]
     except (ValueError, TypeError) as exc:
         raise RuntimeError("Upstream API response did not contain usable text") from exc
