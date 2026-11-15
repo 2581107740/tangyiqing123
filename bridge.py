@@ -50,7 +50,24 @@ def query_muxue(prompt: str) -> str:
         with request.urlopen(req, timeout=100) as response:
             raw = response.read(2_000_000)
     except error.HTTPError as exc:
-        raise RuntimeError(f"Upstream API returned HTTP {exc.code}") from None
+        # Classify rejection without exposing upstream response bodies or secrets.
+        response_type = (exc.headers.get("Content-Type") or "").lower()
+        if "json" in response_type:
+            try:
+                detail = json.loads(exc.read(4096))
+                error_data = detail.get("error", {}) if isinstance(detail, dict) else {}
+                if isinstance(error_data, dict):
+                    code = error_data.get("code") or error_data.get("type")
+                    if isinstance(code, str) and len(code) <= 80 and all(
+                        c.isascii() and (c.isalnum() or c in "._-") for c in code
+                    ):
+                        raise RuntimeError(f"Upstream API returned HTTP {exc.code}, API error code: {code}") from None
+            except (ValueError, TypeError):
+                pass
+            raise RuntimeError(f"Upstream API returned HTTP {exc.code} (JSON response)") from None
+        if "html" in response_type:
+            raise RuntimeError(f"Upstream returned HTTP {exc.code} (HTML, possible gateway/WAF restriction)") from None
+        raise RuntimeError(f"Upstream API returned HTTP {exc.code} (Content-Type: other)") from None
     except error.URLError:
         raise RuntimeError("Upstream API is not reachable") from None
     try:
