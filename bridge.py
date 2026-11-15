@@ -1,10 +1,10 @@
-"""Restricted adapter for a Responses-compatible text API."""
+"""Provider-neutral OpenAI-compatible text adapter for Laai API."""
 import json
 import os
 from urllib import error, request
 
-API_ROOT = "https://api.doroai.app/v1"
-DEFAULT_MODEL = "gpt-6.1-sol"
+API_ROOT = ""
+DEFAULT_MODEL = ""
 
 def extract_text(payload: dict) -> str:
     parts = []
@@ -127,29 +127,29 @@ def error_category(data):
     return "unclassified_json_error"
 
 
-def query_doro(prompt: str) -> str:
+def query_laai(prompt: str) -> str:
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt must be nonempty")
     if len(prompt) > 8000:
         raise ValueError("prompt too long (8000 character limit)")
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    key = os.environ.get("LAAI_API_KEY", "").strip()
     if not key:
-        raise RuntimeError("OPENAI_API_KEY is not configured on the server")
-    root = os.environ.get("DORO_BASE_URL", API_ROOT).rstrip("/")
+        raise RuntimeError("LAAI_API_KEY is not configured on the server")
+    root = os.environ.get("LAAI_BASE_URL", API_ROOT).rstrip("/")
     if not root.startswith("https://"):
-        raise ValueError("DORO_BASE_URL must be HTTPS")
-    api_mode = os.environ.get("DORO_API_MODE", "responses").strip().lower()
+        raise ValueError("LAAI_BASE_URL must be HTTPS")
+    api_mode = os.environ.get("LAAI_API_MODE", "chat_completions").strip().lower()
     if api_mode == "chat_completions":
         endpoint = root + "/chat/completions"
         payload = {
-            "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
+            "model": os.environ.get("LAAI_MODEL", DEFAULT_MODEL),
             "messages": [{"role": "user", "content": prompt}],
-            "stream": True,
+            "stream": False,
         }
     elif api_mode == "responses":
         endpoint = root + "/responses"
         payload = {
-            "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
+            "model": os.environ.get("LAAI_MODEL", DEFAULT_MODEL),
             "instructions": "Answer the user's request accurately and concisely.",
             "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
             "stream": False,
@@ -158,13 +158,12 @@ def query_doro(prompt: str) -> str:
             "max_output_tokens": 1024,
         }
     else:
-        raise ValueError("DORO_API_MODE must be responses or chat_completions")
+        raise ValueError("LAAI_API_MODE must be responses or chat_completions")
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = request.Request(endpoint, data=body, method="POST", headers={
         "Authorization": "Bearer " + key,
         "Content-Type": "application/json",
-        "Accept": "text/event-stream" if api_mode == "chat_completions" else "application/json",
-        "x-openai-actor-authorization": "local-image-extension",
+        "Accept": "application/json",
     })
     try:
         with request.urlopen(req, timeout=100) as response:
@@ -211,10 +210,10 @@ def probe_model_catalog_on_startup() -> None:
     """Check upstream access safely without recording secrets or response bodies."""
     import logging
     log = logging.getLogger("uvicorn.error")
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
-    root = os.environ.get("DORO_BASE_URL", API_ROOT).rstrip("/")
+    key = os.environ.get("LAAI_API_KEY", "").strip()
+    root = os.environ.get("LAAI_BASE_URL", API_ROOT).rstrip("/")
     if not key or not root.startswith("https://"):
-        log.warning("DORO_MODEL_CATALOG_CHECK configured=False")
+        log.warning("LAAI_MODEL_CATALOG_CHECK configured=False")
         return
     req = request.Request(root + "/models", headers={
         "Authorization": "Bearer " + key,
@@ -228,14 +227,14 @@ def probe_model_catalog_on_startup() -> None:
             model_data = json.loads(payload)
             ids = {item.get("id") for item in model_data.get("data", [])
                    if isinstance(item, dict)} if isinstance(model_data, dict) else set()
-            log.warning("DORO_MODEL_CATALOG_CHECK status=%d valid_model_list=%s requested_model_listed=%s",
-                        code, bool(ids), os.environ.get("DORO_MODEL", DEFAULT_MODEL) in ids)
+            log.warning("LAAI_MODEL_CATALOG_CHECK status=%d valid_model_list=%s requested_model_listed=%s",
+                        code, bool(ids), os.environ.get("LAAI_MODEL", DEFAULT_MODEL) in ids)
         except (ValueError, TypeError, AttributeError):
-            log.warning("DORO_MODEL_CATALOG_CHECK status=%d response_json_parse_failed=True", code)
+            log.warning("LAAI_MODEL_CATALOG_CHECK status=%d response_json_parse_failed=True", code)
     except error.HTTPError as exc:
-        log.warning("DORO_MODEL_CATALOG_CHECK status=%d", exc.code)
+        log.warning("LAAI_MODEL_CATALOG_CHECK status=%d", exc.code)
     except Exception:
-        log.warning("DORO_MODEL_CATALOG_CHECK network_or_protocol_failure=True")
+        log.warning("LAAI_MODEL_CATALOG_CHECK network_or_protocol_failure=True")
 
 
 probe_model_catalog_on_startup()
