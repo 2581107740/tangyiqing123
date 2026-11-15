@@ -1,25 +1,20 @@
-# 沐雪 AI → ChatGPT（MCP）
+# Doro AI → ChatGPT MCP（独立试用服务）
 
-本仓库存放部署到 Render 的私用 MCP 桥接服务源码；**不包含任何 API 密钥或登录密码**。
+本分支与 `master` 的沐雪服务相互独立，**不包含 API Key 或 OAuth 密码**。
 
-- 第三方上游：`https://v2.muxueai.pro`（Responses API）
-- 默认模型：`gpt-5.6-sol`
-- MCP 工具：`ask_muxue`
-- Render 免费 Python Web Service，HTTPS 路径：`/mcp`
+- 上游 API：`https://api.doroai.app/v1`（Responses API）
+- 测试模型：`gpt-6.1-sol`（第三方平台提供的模型 ID，实际能力尚待验证）
+- MCP 工具：`ask_doro`
+- Render 服务名称：`doro-chatgpt-mcp`，接口 `/mcp`
+- 运行时：Python；构建 `pip install -r requirements.txt`；启动 `uvicorn server:app --host 0.0.0.0 --port $PORT`
 
-## 必须在 Render 私下配置
+## Render 中私下填写
 
-- `OPENAI_API_KEY`：重新生成、且未在聊天或仓库公开过的沐雪 API Key。
-- `OAUTH_LOGIN_PASSWORD`：仅在 Render 环境变量中设置的 16 字符以上强密码，不能与 API Key 相同。
-- 可选：`MUXUE_BASE_URL=https://v2.muxueai.pro`、`MUXUE_MODEL=gpt-5.6-sol`。
+- `OPENAI_API_KEY`：Doro 后台重新生成、未在聊天里公开过的密钥，建议设置较小额度限制。
+- `OAUTH_LOGIN_PASSWORD`：16 字符以上的强密码，不与 Doro API Key 相同。
+- `DORO_BASE_URL=https://api.doroai.app/v1`
+- `DORO_MODEL=gpt-6.1-sol`
 
-没有上述两项密钥时，接口返回 **503 setup_required**，无法调用上游。
+先检查 `/health` 返回 `status: ready`；再在 ChatGPT 新建自定义 MCP 服务，选择 OAuth，填入新服务的 `/mcp` URL。
 
-## Render 构建
-
-运行时：Python；免费套餐；构建命令：`pip install -r requirements.txt`；启动命令：`uvicorn server:app --host 0.0.0.0 --port $PORT`。
-
-确认 `https://<Render 域名>/health` 显示 `ready` 后，才能在 ChatGPT 的「添加自定义 MCP 服务器」填写 `https://<Render 域名>/mcp` 并使用 OAuth 登录。
-
-这是个人测试版的 OAuth 动态注册与 PKCE 连接服务，尚不适合多人生产使用。Render 免费服务可能休眠，第三方模型调用可能产生费用。仅在你明确要求 `ask_muxue` 时向第三方发送文本，避免提交敏感信息。
-
+这是个人测试服务，Render 免费服务可能休眠。第三方可能记录传输文本并产生 API 计费；不要向外部模型提交私人资料或完整聊天历史。
