@@ -5,23 +5,23 @@ from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from bridge import query_doro
+from bridge import query_laai
 from oauth_app import access_valid, base_url, oauth_ready, routes
 
 mcp = FastMCP(
-    "Doro AI Text Tool",
+    "龙傲 AI Text Tool",
     instructions=("Use this external model only if user explicitly requests it. "
                   "Do not forward private data, API keys, passwords or full histories."),
     host="0.0.0.0", stateless_http=True, json_response=True,
 )
 
 @mcp.tool()
-async def ask_doro(prompt: str) -> str:
-    """Request one text answer from the external Doro AI model on explicit instruction."""
+async def ask_laai(prompt: str) -> str:
+    """Request one text answer from the external 龙傲 AI model on explicit instruction."""
     try:
-        return await asyncio.to_thread(query_doro, prompt)
+        return await asyncio.to_thread(query_laai, prompt)
     except Exception as exc:
-        return "Doro API request failed: " + str(exc)
+        return "龙傲 API request failed: " + str(exc)
 
 class OAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -31,7 +31,7 @@ class OAuthMiddleware(BaseHTTPMiddleware):
             if not access_valid(request.headers.get("Authorization", "")):
                 resource_meta = base_url() + "/.well-known/oauth-protected-resource/mcp"
                 return JSONResponse({"error": "unauthorized"}, status_code=401, headers={
-                    "WWW-Authenticate": 'Bearer resource_metadata="' + resource_meta + '", scope="doro:ask"',
+                    "WWW-Authenticate": 'Bearer resource_metadata="' + resource_meta + '", scope="laai:ask"',
                     "Cache-Control": "no-store",
                 })
         return await call_next(request)
