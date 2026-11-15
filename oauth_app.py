@@ -22,25 +22,25 @@ def base_url():
     return value if value.startswith("https://") and urlparse(value).hostname else ""
 
 def oauth_ready():
-    key = os.getenv("OPENAI_API_KEY", "")
+    key = os.getenv("LAAI_API_KEY", "")
     password = os.getenv("OAUTH_LOGIN_PASSWORD", "")
-    return len(key) >= 24 and len(password) >= 16 and bool(base_url())
+    return len(key) >= 24 and len(password) >= 16 and bool(base_url()) and bool(os.getenv("LAAI_MODEL", "").strip())
 
 # Report only pass/fail flags to private Render service logs. Never log values.
 import logging
 logging.getLogger("uvicorn.error").warning(
     "DORO_CONFIG_CHECK api_key_length_ok=%s oauth_password_length_ok=%s https_base_url_ok=%s",
-    len(os.getenv("OPENAI_API_KEY", "")) >= 24,
+    len(os.getenv("LAAI_API_KEY", "")) >= 24,
     len(os.getenv("OAUTH_LOGIN_PASSWORD", "")) >= 16,
     bool(base_url()),
 )
 
 def key_bytes():
     # Distinct signing key derived using a domain-specific HMAC label.
-    key = os.environ.get("OPENAI_API_KEY", "")
+    key = os.environ.get("LAAI_API_KEY", "")
     if len(key) < 24:
         raise ValueError("not configured")
-    return hmac.new(key.encode(), b"doro-mcp-oauth-signatures-v1", hashlib.sha256).digest()
+    return hmac.new(key.encode(), b"laai-mcp-oauth-signatures-v1", hashlib.sha256).digest()
 
 def b64(data):
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
@@ -82,14 +82,14 @@ def problem(message, status=400):
     return JSONResponse({"error": message}, status_code=status, headers={"Cache-Control": "no-store"})
 
 def not_ready():
-    return problem("Server administrator must configure OPENAI_API_KEY and OAUTH_LOGIN_PASSWORD (16+ characters)", 503)
+    return problem("Server administrator must configure LAAI_API_KEY, LAAI_MODEL and OAUTH_LOGIN_PASSWORD (16+ characters)", 503)
 
 def issuer():
     return base_url()
 
 async def health(request: Request):
     return JSONResponse({"status": "ready" if oauth_ready() else "setup_required",
-                         "type": "doro-oauth-mcp"}, headers={"Cache-Control": "no-store"})
+                         "type": "laai-oauth-mcp"}, headers={"Cache-Control": "no-store"})
 
 async def oauth_metadata(request: Request):
     if not base_url():
@@ -104,7 +104,7 @@ async def oauth_metadata(request: Request):
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
-        "scopes_supported": ["doro:ask"],
+        "scopes_supported": ["laai:ask"],
         "client_id_metadata_document_supported": False,
     }, headers={"Cache-Control": "no-store"})
 
@@ -114,7 +114,7 @@ async def resource_metadata(request: Request):
     return JSONResponse({
         "resource": issuer() + "/mcp",
         "authorization_servers": [issuer()],
-        "scopes_supported": ["doro:ask"],
+        "scopes_supported": ["laai:ask"],
         "bearer_methods_supported": ["header"],
     }, headers={"Cache-Control": "no-store"})
 
@@ -150,7 +150,7 @@ def authorization_data(q):
     if (not client or redirect not in client.get("redirect_uris", [])
         or q.get("response_type") != "code" or q.get("code_challenge_method") != "S256"
         or not re.fullmatch(r"[a-zA-Z0-9_-]{43,128}", challenge)
-        or q.get("scope", "doro:ask") not in ("", "doro:ask")
+        or q.get("scope", "laai:ask") not in ("", "laai:ask")
         or (q.get("resource") and q.get("resource").rstrip("/") != issuer() + "/mcp")):
         return None
     return {"kind": "pending", "client_id": client_id, "redirect_uri": redirect,
@@ -166,11 +166,11 @@ async def authorize(request: Request):
     pending = sign(data)
     return HTMLResponse("""<!doctype html><html lang='zh'><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>Doro MCP 授权</title><style>body{font:17px system-ui;background:#12151b;color:#fff;max-width:440px;
+<title>龙傲 MCP 授权</title><style>body{font:17px system-ui;background:#12151b;color:#fff;max-width:440px;
 margin:40px auto;padding:18px}input,button{box-sizing:border-box;width:100%;padding:14px;margin:12px 0;
 font:inherit;border-radius:8px}button{background:#16a085;color:white;border:0}</style>
-<h2>授权访问Doro AI</h2><p>输入你自己在 Render 中设置的 MCP 登录密码。</p>
-<p>授权后该客户端可以将提交给 ask_doro 的文本发送给第三方 API，并可能产生费用。</p>
+<h2>授权访问龙傲 AI</h2><p>输入你自己在 Render 中设置的 MCP 登录密码。</p>
+<p>授权后该客户端可以将提交给 ask_laai 的文本发送给第三方 API，并可能产生费用。</p>
 <form method='POST' action='/login'><input type='hidden' name='pending' value='""" + html.escape(pending, quote=True) + """'>
 <input type='password' name='password' required autocomplete='current-password' placeholder='MCP 登录密码'>
 <button type='submit'>登录并授权</button></form></html>""", headers={"Cache-Control": "no-store"})
@@ -211,11 +211,11 @@ async def login(request: Request):
 
 def issue_tokens(client_id):
     now = int(time.time())
-    t = sign({"kind": "access", "client_id": client_id, "scope": "doro:ask",
+    t = sign({"kind": "access", "client_id": client_id, "scope": "laai:ask",
               "aud": issuer() + "/mcp", "exp": now + 3600})
-    r = sign({"kind": "refresh", "client_id": client_id, "scope": "doro:ask", "exp": now + 30 * 86400})
+    r = sign({"kind": "refresh", "client_id": client_id, "scope": "laai:ask", "exp": now + 30 * 86400})
     return JSONResponse({"access_token": t, "token_type": "Bearer", "expires_in": 3600,
-                         "refresh_token": r, "scope": "doro:ask"}, headers={"Cache-Control": "no-store"})
+                         "refresh_token": r, "scope": "laai:ask"}, headers={"Cache-Control": "no-store"})
 
 async def token(request: Request):
     if not oauth_ready():
@@ -257,7 +257,7 @@ def access_valid(value):
         return False
     payload = verify(value[7:], "access")
     return bool(payload and payload.get("aud") == issuer() + "/mcp"
-                and payload.get("scope") == "doro:ask")
+                and payload.get("scope") == "laai:ask")
 
 def routes():
     return [
