@@ -105,7 +105,7 @@ def query_doro(prompt: str) -> str:
         "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
         "instructions": "Answer the user's request accurately and concisely.",
         "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
-        "stream": True,
+        "stream": False,
         "store": False,
         "reasoning": {"effort": "low"},
         "max_output_tokens": 1024,
@@ -113,7 +113,7 @@ def query_doro(prompt: str) -> str:
     req = request.Request(endpoint, data=body, method="POST", headers={
         "Authorization": "Bearer " + key,
         "Content-Type": "application/json",
-        "Accept": "text/event-stream",
+        "Accept": "application/json",
         "x-openai-actor-authorization": "local-image-extension",
     })
     try:
