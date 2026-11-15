@@ -44,6 +44,7 @@ def query_muxue(prompt: str) -> str:
         "Authorization": "Bearer " + key,
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "x-openai-actor-authorization": "local-image-extension",
     })
     try:
         with request.urlopen(req, timeout=100) as response:
