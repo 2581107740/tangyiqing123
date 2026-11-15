@@ -53,6 +53,44 @@ def extract_stream(raw: bytes) -> str:
     raise RuntimeError("Upstream Responses stream contained no text output")
 
 
+def extract_chat_stream(raw: bytes) -> str:
+    """Extract assistant text from Chat Completions SSE events."""
+    pieces = []
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        if not line.startswith("data:"):
+            continue
+        event_str = line[5:].strip()
+        if not event_str or event_str == "[DONE]":
+            continue
+        try:
+            event = json.loads(event_str)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("error"):
+            raise RuntimeError("Upstream Chat Completions stream reported failure")
+        choices = event.get("choices", [])
+        if not isinstance(choices, list):
+            continue
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            delta = choice.get("delta", {})
+            if not isinstance(delta, dict):
+                continue
+            content = delta.get("content")
+            if isinstance(content, str):
+                pieces.append(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        pieces.append(part["text"])
+    if pieces:
+        return "".join(pieces)
+    raise RuntimeError("Upstream Chat Completions stream contained no text")
+
+
 def error_category(data):
     """Only return an error classification, never upstream secrets or raw messages."""
     if not isinstance(data, dict):
@@ -106,7 +144,7 @@ def query_doro(prompt: str) -> str:
         payload = {
             "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
             "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
+            "stream": True,
         }
     elif api_mode == "responses":
         endpoint = root + "/responses"
@@ -125,7 +163,7 @@ def query_doro(prompt: str) -> str:
     req = request.Request(endpoint, data=body, method="POST", headers={
         "Authorization": "Bearer " + key,
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "text/event-stream" if api_mode == "chat_completions" else "application/json",
         "x-openai-actor-authorization": "local-image-extension",
     })
     try:
@@ -146,7 +184,9 @@ def query_doro(prompt: str) -> str:
     except error.URLError:
         raise RuntimeError("Upstream API is not reachable") from None
     try:
-        if "text/event-stream" in (response.headers.get("Content-Type") or "").lower() or raw.lstrip().startswith(b"event:"):
+        if "text/event-stream" in (response.headers.get("Content-Type") or "").lower() or raw.lstrip().startswith((b"event:", b"data:")):
+            if api_mode == "chat_completions":
+                return extract_chat_stream(raw)[:40000]
             return extract_stream(raw)[:40000]
         payload = json.loads(raw)
         if api_mode == "chat_completions":
