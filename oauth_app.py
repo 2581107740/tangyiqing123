@@ -26,6 +26,15 @@ def oauth_ready():
     password = os.getenv("OAUTH_LOGIN_PASSWORD", "")
     return len(key) >= 24 and len(password) >= 16 and bool(base_url())
 
+# Report only pass/fail flags to private Render service logs. Never log values.
+import logging
+logging.getLogger("uvicorn.error").warning(
+    "DORO_CONFIG_CHECK api_key_length_ok=%s oauth_password_length_ok=%s https_base_url_ok=%s",
+    len(os.getenv("OPENAI_API_KEY", "")) >= 24,
+    len(os.getenv("OAUTH_LOGIN_PASSWORD", "")) >= 16,
+    bool(base_url()),
+)
+
 def key_bytes():
     # Distinct signing key derived using a domain-specific HMAC label.
     key = os.environ.get("OPENAI_API_KEY", "")
