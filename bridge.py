@@ -111,7 +111,7 @@ def query_doro(prompt: str) -> str:
     req = request.Request(endpoint, data=body, method="POST", headers={
         "Authorization": "Bearer " + key,
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "text/event-stream",
         "x-openai-actor-authorization": "local-image-extension",
     })
     try:
