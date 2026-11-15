@@ -3,8 +3,8 @@ import json
 import os
 from urllib import error, request
 
-API_ROOT = "https://v2.muxueai.pro"
-DEFAULT_MODEL = "gpt-5.6-sol"
+API_ROOT = "https://api.doroai.app/v1"
+DEFAULT_MODEL = "gpt-6.1-sol"
 
 def extract_text(payload: dict) -> str:
     parts = []
@@ -89,7 +89,7 @@ def error_category(data):
     return "unclassified_json_error"
 
 
-def query_muxue(prompt: str) -> str:
+def query_doro(prompt: str) -> str:
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt must be nonempty")
     if len(prompt) > 8000:
@@ -97,12 +97,12 @@ def query_muxue(prompt: str) -> str:
     key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not key:
         raise RuntimeError("OPENAI_API_KEY is not configured on the server")
-    root = os.environ.get("MUXUE_BASE_URL", API_ROOT).rstrip("/")
+    root = os.environ.get("DORO_BASE_URL", API_ROOT).rstrip("/")
     if not root.startswith("https://"):
-        raise ValueError("MUXUE_BASE_URL must be HTTPS")
+        raise ValueError("DORO_BASE_URL must be HTTPS")
     endpoint = root + "/responses"
     body = json.dumps({
-        "model": os.environ.get("MUXUE_MODEL", DEFAULT_MODEL),
+        "model": os.environ.get("DORO_MODEL", DEFAULT_MODEL),
         "instructions": "Answer the user's request accurately and concisely.",
         "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
         "stream": True,
