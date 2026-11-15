@@ -107,6 +107,8 @@ def query_doro(prompt: str) -> str:
         "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}],
         "stream": True,
         "store": False,
+        "reasoning": {"effort": "low"},
+        "max_output_tokens": 1024,
     }, ensure_ascii=False).encode("utf-8")
     req = request.Request(endpoint, data=body, method="POST", headers={
         "Authorization": "Bearer " + key,
