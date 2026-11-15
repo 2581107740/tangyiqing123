@@ -140,3 +140,37 @@ def query_doro(prompt: str) -> str:
         return extract_text(payload)[:40000]
     except (ValueError, TypeError) as exc:
         raise RuntimeError("Upstream API response did not contain usable text") from exc
+
+
+def probe_model_catalog_on_startup() -> None:
+    """Check upstream access safely without recording secrets or response bodies."""
+    import logging
+    log = logging.getLogger("uvicorn.error")
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    root = os.environ.get("DORO_BASE_URL", API_ROOT).rstrip("/")
+    if not key or not root.startswith("https://"):
+        log.warning("DORO_MODEL_CATALOG_CHECK configured=False")
+        return
+    req = request.Request(root + "/models", headers={
+        "Authorization": "Bearer " + key,
+        "Accept": "application/json",
+    })
+    try:
+        with request.urlopen(req, timeout=12) as response:
+            payload = response.read(300000)
+            code = response.status
+        try:
+            model_data = json.loads(payload)
+            ids = {item.get("id") for item in model_data.get("data", [])
+                   if isinstance(item, dict)} if isinstance(model_data, dict) else set()
+            log.warning("DORO_MODEL_CATALOG_CHECK status=%d valid_model_list=%s requested_model_listed=%s",
+                        code, bool(ids), os.environ.get("DORO_MODEL", DEFAULT_MODEL) in ids)
+        except (ValueError, TypeError, AttributeError):
+            log.warning("DORO_MODEL_CATALOG_CHECK status=%d response_json_parse_failed=True", code)
+    except error.HTTPError as exc:
+        log.warning("DORO_MODEL_CATALOG_CHECK status=%d", exc.code)
+    except Exception:
+        log.warning("DORO_MODEL_CATALOG_CHECK network_or_protocol_failure=True")
+
+
+probe_model_catalog_on_startup()
